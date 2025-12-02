@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
+import { supabase } from './supabase';
 
 function App() {
-  const [tasks, setTasks] = useState(() => {
-    const savedTasks = localStorage.getItem('myTasks');
-    return savedTasks ? JSON.parse(savedTasks) : [];
-  });
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [authMode, setAuthMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const [tasks, setTasks] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
@@ -18,59 +24,179 @@ function App() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [showStats, setShowStats] = useState(false);
 
-  const saveTasks = (newTasks) => {
-    setTasks(newTasks);
-    localStorage.setItem('myTasks', JSON.stringify(newTasks));
-  };
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
-  const addTask = () => {
-    if (inputValue.trim() !== '') {
-      const newTask = {
-        id: Date.now(),
-        text: inputValue,
-        completed: false,
-        priority: priority,
-        dueDate: dueDate
-      };
-      saveTasks([...tasks, newTask]);
-      setInputValue('');
-      setDueDate('');
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadTasks();
+    } else {
+      setTasks([]);
+    }
+  }, [user]);
+
+  const loadTasks = async () => {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error loading tasks:', error);
+    } else {
+      setTasks(data || []);
     }
   };
 
-  const toggleComplete = (id) => {
-    const newTasks = tasks.map(task =>
-      task.id === id ? { ...task, completed: !task.completed } : task
-    );
-    saveTasks(newTasks);
+  const handleSignUp = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+    
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setAuthError('Check your email for confirmation link!');
+    }
+    setAuthLoading(false);
   };
 
-  const deleteTask = (id) => {
-    const newTasks = tasks.filter(task => task.id !== id);
-    saveTasks(newTasks);
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      setAuthError(error.message);
+    }
+    setAuthLoading(false);
+  };
+
+  const handleGoogleLogin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+    if (error) {
+      setAuthError(error.message);
+    }
+  };
+
+  const handleFacebookLogin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'facebook',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+    if (error) {
+      setAuthError(error.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setTasks([]);
+  };
+
+  const addTask = async () => {
+    if (inputValue.trim() !== '' && user) {
+      const newTask = {
+        user_id: user.id,
+        text: inputValue,
+        completed: false,
+        priority: priority,
+        due_date: dueDate || null
+      };
+
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert([newTask])
+        .select();
+
+      if (error) {
+        console.error('Error adding task:', error);
+      } else {
+        setTasks([data[0], ...tasks]);
+        setInputValue('');
+        setDueDate('');
+      }
+    }
+  };
+
+  const toggleComplete = async (id) => {
+    const task = tasks.find(t => t.id === id);
+    const { error } = await supabase
+      .from('tasks')
+      .update({ completed: !task.completed })
+      .eq('id', id);
+
+    if (!error) {
+      setTasks(tasks.map(t =>
+        t.id === id ? { ...t, completed: !t.completed } : t
+      ));
+    }
+  };
+
+  const deleteTask = async (id) => {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', id);
+
+    if (!error) {
+      setTasks(tasks.filter(t => t.id !== id));
+    }
   };
 
   const startEditing = (task) => {
     setEditingId(task.id);
     setEditText(task.text);
     setEditPriority(task.priority || 'medium');
-    setEditDueDate(task.dueDate || '');
+    setEditDueDate(task.due_date || '');
   };
 
-  const saveEdit = (id) => {
-    const newTasks = tasks.map(task =>
-      task.id === id ? { 
-        ...task, 
+  const saveEdit = async (id) => {
+    const { error } = await supabase
+      .from('tasks')
+      .update({
         text: editText,
         priority: editPriority,
-        dueDate: editDueDate
-      } : task
-    );
-    saveTasks(newTasks);
-    setEditingId(null);
-    setEditText('');
-    setEditPriority('medium');
-    setEditDueDate('');
+        due_date: editDueDate || null
+      })
+      .eq('id', id);
+
+    if (!error) {
+      setTasks(tasks.map(t =>
+        t.id === id ? { ...t, text: editText, priority: editPriority, due_date: editDueDate } : t
+      ));
+      setEditingId(null);
+      setEditText('');
+      setEditPriority('medium');
+      setEditDueDate('');
+    }
   };
 
   const cancelEdit = () => {
@@ -103,11 +229,86 @@ function App() {
   const lowPriorityCompleted = tasks.filter(task => task.priority === 'low' && task.completed).length;
 
   const today = new Date().toISOString().split('T')[0];
-  const overdueTasks = tasks.filter(task => task.dueDate && task.dueDate < today && !task.completed);
+  const overdueTasks = tasks.filter(task => task.due_date && task.due_date < today && !task.completed);
+
+  if (loading) {
+    return (
+      <div className="App">
+        <div className="loading-screen">
+          <div className="loading-icon">⏳</div>
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="App">
+        <div className="auth-container">
+          <h1>✨ TaskFlow Pro</h1>
+          <p className="auth-subtitle">Sign in to manage your tasks</p>
+          
+          <form onSubmit={authMode === 'login' ? handleLogin : handleSignUp} className="auth-form">
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="auth-input"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password (min 6 characters)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="auth-input"
+              minLength="6"
+              required
+            />
+            
+            {authError && <p className="auth-error">{authError}</p>}
+            
+            <button type="submit" className="auth-button" disabled={authLoading}>
+              {authLoading ? '⏳ Loading...' : (authMode === 'login' ? '🔑 Log In' : '📝 Sign Up')}
+            </button>
+          </form>
+
+          <p className="auth-switch">
+            {authMode === 'login' ? (
+              <>Don't have an account? <button onClick={() => setAuthMode('signup')} className="switch-btn">Sign Up</button></>
+            ) : (
+              <>Already have an account? <button onClick={() => setAuthMode('login')} className="switch-btn">Log In</button></>
+            )}
+          </p>
+
+          <div className="social-divider">
+            <span>or continue with</span>
+          </div>
+
+          <div className="social-buttons">
+            <button onClick={handleGoogleLogin} className="google-btn">
+              Sign in with Google
+            </button>
+            <button onClick={handleFacebookLogin} className="facebook-btn">
+              Sign in with Facebook
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="App">
       <div className="header">
+        <div className="header-top">
+          <div className="user-info">
+            <span>👤 {user.email}</span>
+            <button onClick={handleLogout} className="logout-btn">🚪 Logout</button>
+          </div>
+        </div>
         <h1>✨ TaskFlow Pro</h1>
         <p className="subtitle">Stay organized. Stay productive.</p>
         <div className="stats">
@@ -162,7 +363,7 @@ function App() {
               <p className="overdue-count">{overdueTasks.length} task{overdueTasks.length > 1 ? 's' : ''} overdue!</p>
               <ul className="overdue-list">
                 {overdueTasks.map(task => (
-                  <li key={task.id}>{task.text} (Due: {task.dueDate})</li>
+                  <li key={task.id}>{task.text} (Due: {task.due_date})</li>
                 ))}
               </ul>
             </div>
@@ -288,9 +489,9 @@ function App() {
                           {task.priority === 'low' && '🟢 Low'}
                           {!task.priority && '🟡 Medium'}
                         </span>
-                        {task.dueDate && (
-                          <span className={`task-due-date ${task.dueDate < today && !task.completed ? 'overdue' : ''}`}>
-                            📅 {task.dueDate}
+                        {task.due_date && (
+                          <span className={`task-due-date ${task.due_date < today && !task.completed ? 'overdue' : ''}`}>
+                            📅 {task.due_date}
                           </span>
                         )}
                       </div>
