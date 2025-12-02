@@ -16,16 +16,11 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPriority, setFilterPriority] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [darkMode, setDarkMode] = useState(() => {
-    const savedMode = localStorage.getItem('darkMode');
-    return savedMode === 'true';
-  });
   const [showStats, setShowStats] = useState(false);
 
-  const toggleDarkMode = () => {
-    const newMode = !darkMode;
-    setDarkMode(newMode);
-    localStorage.setItem('darkMode', newMode.toString());
+  const saveTasks = (newTasks) => {
+    setTasks(newTasks);
+    localStorage.setItem('myTasks', JSON.stringify(newTasks));
   };
 
   const addTask = () => {
@@ -37,9 +32,7 @@ function App() {
         priority: priority,
         dueDate: dueDate
       };
-      const newTasks = [...tasks, newTask];
-      setTasks(newTasks);
-      localStorage.setItem('myTasks', JSON.stringify(newTasks));
+      saveTasks([...tasks, newTask]);
       setInputValue('');
       setDueDate('');
     }
@@ -49,14 +42,12 @@ function App() {
     const newTasks = tasks.map(task =>
       task.id === id ? { ...task, completed: !task.completed } : task
     );
-    setTasks(newTasks);
-    localStorage.setItem('myTasks', JSON.stringify(newTasks));
+    saveTasks(newTasks);
   };
 
   const deleteTask = (id) => {
     const newTasks = tasks.filter(task => task.id !== id);
-    setTasks(newTasks);
-    localStorage.setItem('myTasks', JSON.stringify(newTasks));
+    saveTasks(newTasks);
   };
 
   const startEditing = (task) => {
@@ -75,8 +66,7 @@ function App() {
         dueDate: editDueDate
       } : task
     );
-    setTasks(newTasks);
-    localStorage.setItem('myTasks', JSON.stringify(newTasks));
+    saveTasks(newTasks);
     setEditingId(null);
     setEditText('');
     setEditPriority('medium');
@@ -93,43 +83,37 @@ function App() {
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = task.text.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
-    const matchesStatus = 
+    const matchesStatus =
       filterStatus === 'all' ||
       (filterStatus === 'active' && !task.completed) ||
       (filterStatus === 'completed' && task.completed);
     return matchesSearch && matchesPriority && matchesStatus;
   });
 
-  // Statistics calculations
   const completedCount = tasks.filter(task => task.completed).length;
   const activeCount = tasks.length - completedCount;
   const completionRate = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
-  
+
   const highPriorityCount = tasks.filter(task => task.priority === 'high').length;
   const mediumPriorityCount = tasks.filter(task => task.priority === 'medium' || !task.priority).length;
   const lowPriorityCount = tasks.filter(task => task.priority === 'low').length;
-  
+
   const highPriorityCompleted = tasks.filter(task => task.priority === 'high' && task.completed).length;
   const mediumPriorityCompleted = tasks.filter(task => (task.priority === 'medium' || !task.priority) && task.completed).length;
   const lowPriorityCompleted = tasks.filter(task => task.priority === 'low' && task.completed).length;
 
-  // Overdue tasks
   const today = new Date().toISOString().split('T')[0];
   const overdueTasks = tasks.filter(task => task.dueDate && task.dueDate < today && !task.completed);
 
   return (
-    <div className={`App ${darkMode ? 'dark-mode' : ''}`}>
-      <button onClick={toggleDarkMode} className="theme-toggle">
-        {darkMode ? '☀️ Light' : '🌙 Dark'}
-      </button>
-
+    <div className="App">
       <div className="header">
-        <h1>✨ My Task Manager</h1>
-        <p className="subtitle">Stay organized and productive!</p>
+        <h1>✨ TaskFlow Pro</h1>
+        <p className="subtitle">Stay organized. Stay productive.</p>
         <div className="stats">
-          <span className="stat-item">📝 Total: {tasks.length}</span>
-          <span className="stat-item">✅ Done: {completedCount}</span>
-          <span className="stat-item">⏳ Remaining: {activeCount}</span>
+          <span className="stat-item">📝 {tasks.length} Total</span>
+          <span className="stat-item">✅ {completedCount} Done</span>
+          <span className="stat-item">⏳ {activeCount} Active</span>
         </div>
         <button onClick={() => setShowStats(!showStats)} className="stats-toggle">
           {showStats ? '📋 Hide Stats' : '📊 Show Stats'}
@@ -147,31 +131,28 @@ function App() {
           </div>
 
           <div className="stats-grid">
-            <div className="stats-card priority-card">
-              <h3>🔴 High Priority</h3>
+            <div className="stats-card priority-card high">
+              <h3>🔴 High</h3>
               <div className="priority-stats">
                 <span className="big-number">{highPriorityCount}</span>
-                <span className="small-text">tasks</span>
               </div>
-              <p>{highPriorityCompleted} completed</p>
+              <p>{highPriorityCompleted} done</p>
             </div>
 
-            <div className="stats-card priority-card">
-              <h3>🟡 Medium Priority</h3>
+            <div className="stats-card priority-card medium">
+              <h3>🟡 Medium</h3>
               <div className="priority-stats">
                 <span className="big-number">{mediumPriorityCount}</span>
-                <span className="small-text">tasks</span>
               </div>
-              <p>{mediumPriorityCompleted} completed</p>
+              <p>{mediumPriorityCompleted} done</p>
             </div>
 
-            <div className="stats-card priority-card">
-              <h3>🟢 Low Priority</h3>
+            <div className="stats-card priority-card low">
+              <h3>🟢 Low</h3>
               <div className="priority-stats">
                 <span className="big-number">{lowPriorityCount}</span>
-                <span className="small-text">tasks</span>
               </div>
-              <p>{lowPriorityCompleted} completed</p>
+              <p>{lowPriorityCompleted} done</p>
             </div>
           </div>
 
@@ -181,9 +162,7 @@ function App() {
               <p className="overdue-count">{overdueTasks.length} task{overdueTasks.length > 1 ? 's' : ''} overdue!</p>
               <ul className="overdue-list">
                 {overdueTasks.map(task => (
-                  <li key={task.id}>
-                    {task.text} (Due: {task.dueDate})
-                  </li>
+                  <li key={task.id}>{task.text} (Due: {task.dueDate})</li>
                 ))}
               </ul>
             </div>
@@ -197,7 +176,7 @@ function App() {
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && addTask()}
-          placeholder="What needs to be done? ✍️"
+          placeholder="What needs to be done?"
           className="task-input"
         />
         <select
@@ -215,7 +194,7 @@ function App() {
           onChange={(e) => setDueDate(e.target.value)}
           className="date-input"
         />
-        <button onClick={addTask} className="add-button">➕ Add</button>
+        <button onClick={addTask} className="add-button">+ Add</button>
       </div>
 
       <div className="search-filter-container">
@@ -231,7 +210,7 @@ function App() {
           onChange={(e) => setFilterPriority(e.target.value)}
           className="filter-select"
         >
-          <option value="all">🎯 All Priorities</option>
+          <option value="all">All Priorities</option>
           <option value="high">🔴 High</option>
           <option value="medium">🟡 Medium</option>
           <option value="low">🟢 Low</option>
@@ -241,9 +220,9 @@ function App() {
           onChange={(e) => setFilterStatus(e.target.value)}
           className="filter-select"
         >
-          <option value="all">📋 All Tasks</option>
-          <option value="active">⏳ Active</option>
-          <option value="completed">✅ Completed</option>
+          <option value="all">All Tasks</option>
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
         </select>
       </div>
 
@@ -256,7 +235,7 @@ function App() {
         ) : filteredTasks.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">🔍</div>
-            <p>No tasks match your search or filters.</p>
+            <p>No tasks match your filters.</p>
           </div>
         ) : (
           filteredTasks.map((task) => (
