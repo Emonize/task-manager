@@ -494,7 +494,14 @@ function App() {
         alert('Error adding member');
       }
     } else {
-      await loadGroupMembers(selectedGroup.id);
+      // IMMEDIATE STATE UPDATE - This fixes the bug!
+      setGroupMembers(prev => [...prev, {
+        id: Date.now(), // temporary ID
+        group_id: selectedGroup.id,
+        user_id: userData.id,
+        role: 'member',
+        profiles: userData
+      }]);
       setMemberEmail('');
       setShowAddMember(false);
 
